@@ -1,0 +1,91 @@
+---
+
+- name: Configure cluster
+  hosts: masters
+  vars_files: default.yaml
+
+  tasks:
+    - name: Create etcd config directory
+      file:
+        path: "/etc/etcd"
+        state: directory
+      tags:
+        - etcd
+
+    - name: Create etcd download directory
+      file:
+        path: "/opt/etcd"
+        state: directory
+      tags:
+        - etcd
+
+
+    - name: Create etcd bin directory
+      file:
+        path: "/usr/local/bin"
+        state: directory
+
+    - name: Create etcd data directory
+      file:
+        path: "/var/lib/etcd"
+        state: directory
+
+    - name: Copy certificates
+      copy:
+         src: "CA/{{ item }}"
+         dest: "/etc/etcd/{{ item }}"
+         mode: 0640
+         owner: root
+         group: root
+      with_items:
+         - "ca.pem"
+         - "kubernetes.pem"
+         - "kubernetes-key.pem"    
+
+    - name: Downloading official etcd release
+      get_url:
+        url: "https://github.com/coreos/etcd/releases/download/v{{ etcd_version }}/etcd-v{{ etcd_version }}-linux-amd64.tar.gz"
+        dest: "{{ etcd_download_dir }}/etcd-v{{ etcd_version }}-linux-amd64.tar.gz"
+        mode: 0755
+
+    - name: Unzip downloaded file
+      unarchive:
+        src: "{{ etcd_download_dir }}/etcd-v{{ etcd_version }}-linux-amd64.tar.gz"
+        dest: "{{ etcd_download_dir }}/"
+        remote_src: yes
+        owner: "root"
+        group: "root"
+        creates: "{{ etcd_download_dir }}/etcd-v{{ etcd_version }}-linux-amd64/etcd"
+
+    - name: Copy etcd binaries to destination directory
+      copy:
+        src: "{{ etcd_download_dir }}/etcd-v{{ etcd_version }}-linux-amd64/{{ item }}"
+        dest: "{{ etcd_bin_dir }}/{{ item }}"
+        mode: 0755
+        owner: root
+        group: root
+        remote_src: yes
+      with_items:
+        - etcd
+        - etcdctl    
+
+    - name: Create systemd unit file
+      template:
+        src: etcd.service.j2
+        dest: /etc/systemd/system/etcd.service
+        owner: root
+        group: root
+        mode: 0644
+      notify:
+        - reload systemd
+
+    - name: Enable and start etcd
+      service:
+        name: etcd
+        enabled: yes
+        state: started
+    
+  handlers:
+    - name: reload systemd
+      systemd:
+        daemon_reload: yes
