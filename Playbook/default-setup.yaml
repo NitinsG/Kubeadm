@@ -1,0 +1,38 @@
+---
+
+- hosts: nodes
+  tasks:
+#   - name: Install build-essential
+#     apt: name=build-essential state=present
+
+#   - name: Install the libselinux-python package
+#     apt: name=['python-selinux','selinux-utils','selinux-policy-*'] state=present 
+ 
+#   - name: disable SELinux on reboot
+#     selinux:
+#       state: disabled
+
+   - name: ensure net.bridge.bridge-nf-call-ip6tables is set to 1
+     sysctl:
+      name: net.bridge.bridge-nf-call-ip6tables
+      value: 1
+      state: present
+
+   - name: ensure net.bridge.bridge-nf-call-iptables is set to 1
+     sysctl:
+      name: net.bridge.bridge-nf-call-iptables
+      value: 1
+      state: present
+
+   - name: Remove swapfile from /etc/fstab
+     mount:
+      name: "{{ item }}"
+      fstype: swap
+      state: absent
+     with_items:
+      - swap
+      - none
+
+   - name: Disable swap
+     command: swapoff -a
+     when: ansible_swaptotal_mb > 0
