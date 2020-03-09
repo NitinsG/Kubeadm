@@ -1,76 +1,76 @@
 ---
 
-- hosts: nodes
+- name: Configure cluster
+  hosts: master-1
+
   tasks:
-#   - name: Install build-essential
-#     apt: name=build-essential state=present
+    - name: Execute kubeadm Command
+      shell: kubeadm init --config=/root/kube-config.yaml
 
-#   - name: Install the libselinux-python package
-#     apt: name=['python-selinux','selinux-utils','selinux-policy-*'] state=present 
- 
-#   - name: disable SELinux on reboot
-#     selinux:
-#       state: disabled
+    - name: create .kube directory
+      file:
+        path: $HOME/.kube
+        state: directory
+        mode: 0755
 
-   - name: ensure net.bridge.bridge-nf-call-ip6tables is set to 1
-     sysctl:
-      name: net.bridge.bridge-nf-call-ip6tables
-      value: 1
-      state: present
+    - name: copy admin.conf to user's kube config
+      copy:
+        src: /etc/kubernetes/admin.conf
+        dest: /root/.kube/config
+        remote_src: yes
+        owner: root
 
-   - name: ensure net.bridge.bridge-nf-call-iptables is set to 1
-     sysctl:
-      name: net.bridge.bridge-nf-call-iptables
-      value: 1
-      state: present
-
-   - name: Remove swapfile from /etc/fstab
-     mount:
-      name: "{{ item }}"
-      fstype: swap
-      state: absent
-     with_items:
-      - swap
-      - none
-
-   - name: Disable swap
-     command: swapoff -a
-     when: ansible_swaptotal_mb > 0
-
-
-- hosts: master-1
+- name: running on master 2 
+  hosts: master-2
   tasks:
-   - name: check if rules file exists
-     stat: 
-      path: /root/.ssh/id_rsa
-     register: key_exists       
-   
-   - name : Generate ssh keys
-     shell: yes "/root/.ssh/id_rsa" | sudo ssh-keygen -t rsa -N ""    
-     when: key_exists.stat.exists == false
+    - name: Transfer file from master-1 to master-2
+      synchronize:
+        src: /etc/kubernetes/pki
+        dest: /etc/kubernetes/pki
+        mode: push
+        recursive: yes
+      delegate_to: master-1
+      
+    - name: Search files to be deleted
+      find:
+        paths: /etc/kubernetes/pki
+        patterns: "apiserver.*"
+        use_regex: true
+      register: wildcard_files_to_delete
 
-   - name: Copy the key rest of the servers
-     shell: cat /root/.ssh/id_rsa.pub 
-     register: command_output 
+    - name: Remove files after finding
+      file:
+         path: "{{ item.path }}"
+         state: absent
+      with_items: "{{ wildcard_files_to_delete.files }}"  
 
-   - name: Register dummy host with variable
-     add_host:
-       name: "DUMMY_HOST"
-       PLAY1VAR_NEW: "{{ command_output.stdout }}"  
+    - name: Execute kubeadm Command
+      shell: kubeadm init --config=/root/kube-config.yaml
 
-- hosts: master-2,master-3
-  tasks:      
-   - name: Check .ssh directory
-     file:
-      path: /root/.ssh
-      state: directory
-    
-   - name: Copy to authorized key
-     shell: echo "{{ hostvars['DUMMY_HOST']['PLAY1VAR_NEW'] }}" >> /root/.ssh/authorized_keys
 
-   - name: Check file Permission
-     file:
-      path: /root/.ssh/authorized_keys
-      owner: root
-      group: root
-      mode: '0600'
+- name: master-3
+  hosts: master-3
+  tasks:
+    - name: Transfer file from master-1 to master-3
+      synchronize:
+        src: /etc/kubernetes/pki
+        dest: /etc/kubernetes/pki
+        mode: push
+        recursive: yes
+      delegate_to: master-1
+
+    - name: Search files to be deleted
+      find:
+        paths: /etc/kubernetes/pki
+        patterns: "apiserver.*"
+        use_regex: true
+      register: wildcard_files_to_delete
+
+    - name: Remove files after finding
+      file:
+         path: "{{ item.path }}"
+         state: absent
+      with_items: "{{ wildcard_files_to_delete.files }}" 
+
+    - name: Execute kubeadm Command
+      shell: kubeadm init --config=/root/kube-config.yaml  
