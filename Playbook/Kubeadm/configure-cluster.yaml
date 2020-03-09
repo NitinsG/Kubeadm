@@ -59,13 +59,8 @@
        PLAY1VAR_NEW: "{{ command_output.stdout }}"  
 
 - hosts: master-2,master-3
-  tasks:
-   
-   - name: Echo the output - PLAY1 variable vaule
-     shell: echo "{{ hostvars['DUMMY_HOST']['PLAY1VAR_NEW'] }}"
-     register: key_value       
-
-   - name: Generte keys
+  tasks:      
+   - name: Check .ssh directory
      file:
       path: /root/.ssh
       state: directory
